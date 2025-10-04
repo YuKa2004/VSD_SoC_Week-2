@@ -68,7 +68,6 @@ The SoC design process is a multi-stage workflow, and **Functional Modelling** (
 
 ### Design Flow Context
 
-<img width="867" height="1305" alt="381900611-54b5e8f9-f03d-4b53-a535-859360589119" src="https://github.com/user-attachments/assets/3cf78d86-90b5-4ce6-9035-f323a40e38d7" />
 
 
 The typical digital design flow proceeds as follows:
@@ -82,3 +81,131 @@ $$\text{Functional Modelling} \rightarrow \text{RTL Design} \rightarrow \text{Lo
 * **Establishing Testbenches:** The functional model acts as a reference against which the more detailed RTL design will be verified.
 
 In the context of BabySoC, the functional modelling stage is where we confirm that the RVMYTH core, the PLL, and the DAC interact correctly—for instance, that the RVMYTH's output is correctly passed to and converted by the DAC, all synchronized by a stable clock. This foundational simulation ensures that the design's *intent* is met before moving toward a gate-level and ultimately a physical chip implementation.
+
+## 📂 Project Structure
+
+```txt
+VSDBabySoC/
+├── src/
+│   ├── include/      # Header files (*.vh)
+│   ├── module/       # Verilog + TLV modules
+│   │   ├── vsdbabysoc.v   # Top-level module
+│   │   ├── rvmyth.v       # CPU
+│   │   ├── avsdpll.v      # PLL
+│   │   ├── avsddac.v      # DAC
+│   │   └── testbench.v    # Testbench
+└── output/           # Simulation outputs
+```
+
+---
+
+## 🛠️ Setup
+
+### 📥 Cloning the Project
+
+```bash
+cd ~/VLSI
+git clone https://github.com/manili/VSDBabySoC.git
+cd VSDBabySoC/
+```
+
+📂 You’ll see:
+
+* `src/` (modules)
+* `images/` (visuals)
+* `output/` (simulation results)
+
+---
+
+## 🔧 TLV → Verilog Conversion
+
+Since **RVMYTH** is written in **TL-Verilog (.tlv)**, we need to convert it to Verilog before simulating.
+
+```bash
+# Install tools
+sudo apt update
+sudo apt install python3-venv python3-pip
+
+# Create virtual env
+python3 -m venv sp_env
+source sp_env/bin/activate
+
+# Install SandPiper-SaaS
+pip install pyyaml click sandpiper-saas
+
+# Convert TLV → Verilog
+sandpiper-saas -i ./src/module/*.tlv -o rvmyth.v --bestsv --noline -p verilog --outdir ./src/module/
+```
+
+✅ Now you’ll have `rvmyth.v` alongside your other Verilog files.
+
+---
+
+## 🧪 Simulation Flow
+
+### 🔹 Pre-Synthesis Simulation
+
+```bash
+mkdir -p output/pre_synth_sim
+
+iverilog -o output/pre_synth_sim/pre_synth_sim.out \
+  -DPRE_SYNTH_SIM \
+  -I src/include -I src/module \
+  src/module/testbench.v
+
+cd output/pre_synth_sim
+./pre_synth_sim.out
+```
+
+📊 View in GTKWave:
+
+<img width="1415" height="684" alt="image" src="https://github.com/user-attachments/assets/54668b24-bb75-429c-8b7f-1520083df4a6" />
+
+
+```bash
+gtkwave output/pre_synth_sim/pre_synth_sim.vcd
+```
+
+### 🔍 Signals to Observe
+
+* ⏱️ **CLK** → Input clock (from PLL)
+* 🔄 **reset** → Reset signal
+* 🎚 **OUT (DAC)** → Output from DAC (appears digital in sim)
+* 🔢 **RV_TO_DAC[9:0]** → 10-bit RVMYTH output → DAC input
+
+---
+
+
+## VSDBabySoC Pre-Synthesis Waveform Analysis
+
+The GTKWave screenshot confirms the fundamental digital-analog data path and timing for the simplified BabySoC design.
+
+### Core Timing and Control
+
+* **`CLK`**: Shows a stable, periodic high/low sequence, confirming the **Phase-Locked Loop (PLL)** is generating the necessary system clock to drive all components.
+* **`reset`**: Is held **low (`0`)**, indicating the entire system (RVMYTH, DAC, PLL) is operational and out of reset.
+
+***
+
+### Data Flow (RVMYTH to DAC)
+
+The waveforms illustrate the **RVMYTH CPU** successfully delivering a digital value to the **DAC peripheral**.
+
+* **`core.OUT`**: This is the data stream output from the **RVMYTH CPU** (likely from register `r17`). The visible pattern of **`0, 1, 0, 1, ...`** confirms the CPU is actively executing a test program designed to toggle its output.
+* **`dac.DAC[9:0]`**: This is the **10-bit digital input** to the DAC. The value is consistently held at **`042`** (hexadecimal, or $66$ decimal) for the time shown. This confirms the CPU has successfully written a static digital code to the DAC's input register.
+
+***
+
+### Analog Output
+
+* **`OUT` (Real-Valued)**: This signal, labeled `OUT=0.06451`, is the resulting **analog voltage output** from the DAC. Its stable value demonstrates the core mixed-signal function is working: the DAC successfully converts the digital input (`042h`) into a corresponding constant analog voltage (`0.06451`).
+
+**In summary, the simulation verifies that the CPU is clocked, active, and can correctly communicate digital data to the DAC, which in turn converts it to a stable analog output voltage.**
+
+
+
+
+
+
+
+
